@@ -1,0 +1,21 @@
+{
+  "480435311818702848": {
+    "user_id": "480435311818702848",
+    "ime": "Vilenjak#4804",
+    "nivo": 1,
+    "iskustvo": 0,
+    "snowflakes": 100,
+    "kućica": "Osnovna vilenjačka kućica",
+    "radionica": "Osnovna radionica",
+    "vještine": {
+      "izrada_igračaka": 1,
+      "ukrašavanje": 1,
+      "pakiranje": 1,
+      "pečenje": 1
+    },
+    "inventory": {
+      "dekoracije": [],
+      "alat": []
+    }
+  }
+}

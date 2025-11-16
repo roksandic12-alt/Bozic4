@@ -662,14 +662,22 @@ async def on_ready():
 # --- POKRETANJE BOTA ---
 if __name__ == "__main__":
     load_vilenjaci()
+    
+    # Debug: ispiši sve environment variables
+    print("🔍 Environment variables:")
+    for key, value in os.environ.items():
+        if 'DISCORD' in key or 'TOKEN' in key:
+            print(f"   {key}: {'*' * len(value) if value else 'None'}")
+    
     token = os.environ.get('DISCORD_TOKEN')
     
     if not token:
         print("❌ DISCORD_TOKEN nije postavljen!")
-        print("🔍 Provjeri Railway Variables")
+        print("🔍 Dostupne varijable:", list(os.environ.keys()))
         exit(1)
     
     try:
+        print("🚀 Pokrećem bota...")
         bot.run(token)
     except Exception as e:
         print(f"❌ Greška pri pokretanju: {e}")

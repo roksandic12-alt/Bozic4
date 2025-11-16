@@ -660,11 +660,17 @@ async def on_ready():
     load_vilenjaci()
 
 # --- POKRETANJE BOTA ---
-# Ovo će se pokrenuti kada se fajl izvršava
 if __name__ == "__main__":
     load_vilenjaci()
     token = os.environ.get('DISCORD_TOKEN')
-    if token:
-        bot.run(token)
-    else:
+    
+    if not token:
         print("❌ DISCORD_TOKEN nije postavljen!")
+        print("🔍 Provjeri Railway Variables")
+        exit(1)
+    
+    try:
+        bot.run(token)
+    except Exception as e:
+        print(f"❌ Greška pri pokretanju: {e}")
+        exit(1)

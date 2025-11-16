@@ -663,22 +663,25 @@ async def on_ready():
 if __name__ == "__main__":
     load_vilenjaci()
     
-    # Debug: ispiši sve environment variables
-    print("🔍 Environment variables:")
-    for key, value in os.environ.items():
-        if 'DISCORD' in key or 'TOKEN' in key:
-            print(f"   {key}: {'*' * len(value) if value else 'None'}")
-    
-    token = os.environ.get('DISCORD_TOKEN')
+    # Pokušaj dobiti token na različite načine
+    token = (
+        os.environ.get('DISCORD_TOKEN') or
+        os.environ.get('TOKEN') or
+        os.environ.get('BOT_TOKEN') or
+        os.environ.get('DISCORDBOT_TOKEN')
+    )
     
     if not token:
-        print("❌ DISCORD_TOKEN nije postavljen!")
+        print("❌ Token nije pronađen u environment varijablama!")
         print("🔍 Dostupne varijable:", list(os.environ.keys()))
-        exit(1)
+        # Pokušaj s default tokenom za test
+        print("🔄 Pokušavam s fallback tokenom...")
+        token = "YOUR_TOKEN_HERE"  # Stavi ovdje svoj token direktno TEMPORARNO
+    else:
+        print("✅ Token pronađen u environment varijablama!")
     
     try:
         print("🚀 Pokrećem bota...")
         bot.run(token)
     except Exception as e:
         print(f"❌ Greška pri pokretanju: {e}")
-        exit(1)

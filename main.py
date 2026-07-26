@@ -1,15 +1,14 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import json
 import random
-import asyncio
 import os
 from datetime import datetime, timedelta
 
-# --- KONFIGURACIJA ---
+# --- OPTIMIZACIJA INTENATA (LOW RAM FOR RAILWAY) ---
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True
+# Isključeno intents.members jer drastično troši memoriju.
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -21,7 +20,7 @@ class Vilenjak:
         self.nivo = 1
         self.iskustvo = 0
         self.snowflakes = 100
-        self.radionica = "Prazna"
+        self.radionica = "Osnovna"
         self.kucica = "Osnovna"
         self.vjestine = {
             "pravi_igracke": 1,
@@ -35,653 +34,309 @@ class Vilenjak:
             "vrh_jelke": [],
             "ostali_ukrasi": []
         }
-        self.jelka_level = 0
+        self.jelka_level = 1
         self.jelka_xp = 0
-        self.zadnji_zadatak = None
-        self.login_streak = 0
 
-# --- POBOLJŠANI SHOP ---
+# --- SHOP DEFINICIJA ---
 vilenjacki_shop = {
     "lampice": {
-        "obicne_lampice": {"cijena": 50, "bonus": "+1 sjaj jelke", "boja": "⚪"},
-        "zute_lampice": {"cijena": 80, "bonus": "+2 sjaj jelke", "boja": "🟡"},
-        "crvene_lampice": {"cijena": 100, "bonus": "+3 sjaj jelke", "boja": "🔴"},
-        "plave_lampice": {"cijena": 120, "bonus": "+4 sjaj jelke", "boja": "🔵"},
-        "dugine_lampice": {"cijena": 200, "bonus": "+5 sjaj jelke", "boja": "🌈"},
-        "magicne_lampice": {"cijena": 300, "bonus": "+10 sjaj jelke", "boja": "✨"}
+        "zute_lampice": {"cijena": 50, "bonus": 2, "boja": "🟡"},
+        "crvene_lampice": {"cijena": 60, "bonus": 3, "boja": "🔴"},
+        "plave_lampice": {"cijena": 70, "bonus": 4, "boja": "🔵"},
+        "magicne_lampice": {"cijena": 120, "bonus": 8, "boja": "✨"}
     },
     "kugle": {
-        "crvena_kugla": {"cijena": 40, "bonus": "+1 ljepota jelke", "boja": "🔴"},
-        "zlatna_kugla": {"cijena": 60, "bonus": "+2 ljepota jelke", "boja": "🟡"},
-        "plava_kugla": {"cijena": 70, "bonus": "+3 ljepota jelke", "boja": "🔵"},
-        "zelen_kugla": {"cijena": 80, "bonus": "+4 ljepota jelke", "boja": "🟢"},
-        "srebrna_kugla": {"cijena": 100, "bonus": "+5 ljepota jelke", "boja": "⚪"},
-        "kristalna_kugla": {"cijena": 150, "bonus": "+8 ljepota jelke", "boja": "💎"}
+        "crvena_kugla": {"cijena": 30, "bonus": 2, "boja": "🔴"},
+        "zlatna_kugla": {"cijena": 45, "bonus": 3, "boja": "🟡"},
+        "plava_kugla": {"cijena": 55, "bonus": 4, "boja": "🔵"},
+        "kristalna_kugla": {"cijena": 100, "bonus": 7, "boja": "💎"}
     },
     "vrhovi": {
-        "obicna_zvijezda": {"cijena": 100, "bonus": "+5 ukupni bonus", "boja": "⭐"},
-        "srebrna_zvijezda": {"cijena": 200, "bonus": "+10 ukupni bonus", "boja": "🌟"},
-        "zlatna_zvijezda": {"cijena": 300, "bonus": "+15 ukupni bonus", "boja": "💫"},
-        "andjeo": {"cijena": 250, "bonus": "+12 ukupni bonus", "boja": "👼"},
-        "snjezna_vila": {"cijena": 400, "bonus": "+20 ukupni bonus", "boja": "❄️"}
-    },
-    "ostali_ukrasi": {
-        "snic": {"cijena": 30, "bonus": "+1 srecu", "boja": "❄️"},
-        "cokoladica": {"cijena": 25, "bonus": "+1 slatkoca", "boja": "🍫"},
-        "cokoladicni_djed": {"cijena": 50, "bonus": "+2 slatkoca", "boja": "🎅"},
-        "zvezda": {"cijena": 35, "bonus": "+1 sjaj", "boja": "⭐"},
-        "srce": {"cijena": 45, "bonus": "+1 ljubav", "boja": "❤️"},
-        "zvono": {"cijena": 55, "bonus": "+1 zvuk", "boja": "🔔"}
+        "obicna_zvijezda": {"cijena": 80, "bonus": 5, "boja": "⭐"},
+        "zlatna_zvijezda": {"cijena": 150, "bonus": 12, "boja": "💫"},
+        "andjeo": {"cijena": 200, "bonus": 15, "boja": "👼"}
     }
 }
 
-# --- ZADACI SA 8H COOLDOWN ---
 dnevni_zadaci = {
-    "pravi_igracke": {
-        "opis": "Napravi 10 drvenih igracka za dobru djecu",
-        "iskustvo": 50,
-        "snowflakes": 25,
-        "potrebna_vjestina": "pravi_igracke",
-        "cooldown": 8  # sati
-    },
-    "pakiraj_poklone": {
-        "opis": "Zamotaj 15 poklona za posebno dobru djecu",
-        "iskustvo": 40,
-        "snowflakes": 20,
-        "potrebna_vjestina": "pakira_poklone",
-        "cooldown": 8
-    },
-    "njega_jelena": {
-        "opis": "Cetkaj i hrani Rudolpha i ostale jelene",
-        "iskustvo": 35,
-        "snowflakes": 30,
-        "potrebna_vjestina": "briga_o_jelenima",
-        "cooldown": 8
-    },
-    "carolija_snijega": {
-        "opis": "Baci caroliju za bijeli Bozic",
-        "iskustvo": 60,
-        "snowflakes": 40,
-        "potrebna_vjestina": "carolija",
-        "cooldown": 8
-    },
-    "ciscenje_radionice": {
-        "opis": "Ocisti radionicu za nove projekte",
-        "iskustvo": 30,
-        "snowflakes": 15,
-        "potrebna_vjestina": "pravi_igracke",
-        "cooldown": 8
-    }
+    "pravi_igracke": {"opis": "Napravi drvene igračke", "iskustvo": 25, "snowflakes": 40, "vjestina": "pravi_igracke"},
+    "pakiraj_poklone": {"opis": "Zamotaj poklone za djecu", "iskustvo": 20, "snowflakes": 35, "vjestina": "pakira_poklone"},
+    "njega_jelena": {"opis": "Nahrani Rudolfa i ekipu", "iskustvo": 30, "snowflakes": 50, "vjestina": "briga_o_jelenima"},
+    "carolija_snijega": {"opis": "Baci čaroliju za bijeli Božić", "iskustvo": 40, "snowflakes": 60, "vjestina": "carolija"}
 }
 
-# --- GLOBALNE VARIJABLE ---
 vilenjaci = {}
-aktivni_zadaci = {}
 cooldown_zadaci = {}
 
-# --- FUNKCIJE ZA SPREMANJE ---
+# --- SPREMANJE I UČITAVANJE ---
 def load_vilenjaci():
     global vilenjaci
-    try:
-        if os.path.exists('vilenjaci.json'):
+    if os.path.exists('vilenjaci.json'):
+        try:
             with open('vilenjaci.json', 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                for user_id, vilenjak_data in data.items():
-                    vilenjak = Vilenjak(user_id)
-                    for key, value in vilenjak_data.items():
-                        setattr(vilenjak, key, value)
-                    vilenjaci[user_id] = vilenjak
-            print(f"📂 Učitano {len(vilenjaci)} vilenjaka")
-    except Exception as e:
-        print(f"❌ Greška pri učitavanju: {e}")
-        vilenjaci = {}
+                for user_id, v_data in data.items():
+                    v = Vilenjak(user_id)
+                    v.__dict__.update(v_data)
+                    vilenjaci[user_id] = v
+            print(f"📂 Učitano {len(vilenjaci)} vilenjaka.")
+        except Exception as e:
+            print(f"❌ Greška pri učitavanju JSON-a: {e}")
 
 def save_vilenjaci():
     try:
-        data = {}
-        for user_id, vilenjak in vilenjaci.items():
-            data[user_id] = vilenjak.__dict__
-
+        data = {user_id: v.__dict__ for user_id, v in vilenjaci.items()}
         with open('vilenjaci.json', 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"❌ Greška pri spremanju: {e}")
+        print(f"❌ Greška pri spremanju JSON-a: {e}")
 
 # --- POMOĆNE FUNKCIJE ---
-def can_do_zadatak(user_id, zadatak_id):
-    """Provjeri može li korisnik raditi zadatak (cooldown)"""
-    if user_id not in cooldown_zadaci:
-        return True
-
-    if zadatak_id not in cooldown_zadaci[user_id]:
-        return True
-
-    zadnji_put = cooldown_zadaci[user_id][zadatak_id]
-    cooldown_sati = dnevni_zadaci[zadatak_id]['cooldown']
-    vrijeme_proslo = datetime.now() - zadnji_put
-
-    return vrijeme_proslo.total_seconds() >= cooldown_sati * 3600
-
-def get_cooldown_remaining(user_id, zadatak_id):
-    """Vrati preostalo vrijeme cooldowna"""
+def get_cooldown(user_id, zadatak_id):
     if user_id not in cooldown_zadaci or zadatak_id not in cooldown_zadaci[user_id]:
         return 0
-
-    zadnji_put = cooldown_zadaci[user_id][zadatak_id]
-    cooldown_sati = dnevni_zadaci[zadatak_id]['cooldown']
-    vrijeme_proslo = datetime.now() - zadnji_put
-    preostalo = (cooldown_sati * 3600) - vrijeme_proslo.total_seconds()
-
+    proslo = datetime.now() - cooldown_zadaci[user_id][zadatak_id]
+    preostalo = 28800 - proslo.total_seconds() # 8 sati = 28800 sekundi
     return max(0, preostalo)
 
-def format_time(seconds):
-    """Formatiraj vrijeme u čitljiv oblik"""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    return f"{hours}h {minutes}m"
+def calculate_stats(vilenjak):
+    sjaj, ljepota, bonus = 0, 0, 0
+    for k in vilenjak.inventory["lampice"]:
+        if k in vilenjacki_shop["lampice"]: sjaj += vilenjacki_shop["lampice"][k]["bonus"]
+    for k in vilenjak.inventory["kugle"]:
+        if k in vilenjacki_shop["kugle"]: ljepota += vilenjacki_shop["kugle"][k]["bonus"]
+    for k in vilenjak.inventory["vrh_jelke"]:
+        if k in vilenjacki_shop["vrhovi"]: bonus += vilenjacki_shop["vrhovi"][k]["bonus"]
+    return sjaj, ljepota, bonus
 
-def calculate_jelka_stats(vilenjak):
-    """Izračunaj ukupne statove jelke"""
-    ukupni_sjaj = 0
-    ukupna_ljepota = 0
-    ukupni_bonus = 0
+# --- DINAMIČKO RENDERIRANJE JELKICE ---
+def generiraj_jelku_string(vilenjak):
+    # Pokupi sve emotikone ukrasa koje igrač ima u inventoryju
+    bazen_ukrasa = []
+    for k in vilenjak.inventory["lampice"]:
+        if k in vilenjacki_shop["lampice"]: bazen_ukrasa.append(vilenjacki_shop["lampice"][k]["boja"])
+    for k in vilenjak.inventory["kugle"]:
+        if k in vilenjacki_shop["kugle"]: bazen_ukrasa.append(vilenjacki_shop["kugle"][k]["boja"])
 
-    # Lampice
-    for lampica in vilenjak.inventory["lampice"]:
-        if lampica in vilenjacki_shop["lampice"]:
-            bonus_str = vilenjacki_shop["lampice"][lampica]["bonus"]
-            ukupni_sjaj += int(bonus_str.split("+")[1].split(" ")[0])
+    # Odredi vrh jelke
+    vrh = "🎄"
+    if vilenjak.inventory["vrh_jelke"]:
+        zadnji_vrh = vilenjak.inventory["vrh_jelke"][-1]
+        if zadnji_vrh in vilenjacki_shop["vrhovi"]:
+            vrh = vilenjacki_shop["vrhovi"][zadnji_vrh]["boja"]
 
-    # Kugle
-    for kugla in vilenjak.inventory["kugle"]:
-        if kugla in vilenjacki_shop["kugle"]:
-            bonus_str = vilenjacki_shop["kugle"][kugla]["bonus"]
-            ukupna_ljepota += int(bonus_str.split("+")[1].split(" ")[0])
+    # Šablona grana jelke (broj iglica po redovima)
+    redovi_velicine = [1, 3, 5, 7, 9]
+    jelka_rows = []
+    
+    # Postavljanje vrha
+    jelka_rows.append(f"   {vrh}   ")
 
-    # Vrh
-    for vrh in vilenjak.inventory["vrh_jelke"]:
-        if vrh in vilenjacki_shop["vrhovi"]:
-            bonus_str = vilenjacki_shop["vrhovi"][vrh]["bonus"]
-            ukupni_bonus += int(bonus_str.split("+")[1].split(" ")[0])
+    for max_zelenih in redovi_velicine:
+        red_str = ""
+        for _ in range(max_zelenih):
+            # Ako igrač ima ukrase, postoji 35% šanse da na mjesto iglice stavimo njegov ukras
+            if bazen_ukrasa and random.random() < 0.35:
+                red_str += random.choice(bazen_ukrasa)
+            else:
+                red_str += "🌿"
+        
+        # Centriranje reda radi pravilnog oblika trokuta
+        razmak = (9 - max_zelenih) // 1
+        jelka_rows.append(" " * razmak + red_str)
 
-    return ukupni_sjaj, ukupna_ljepota, ukupni_bonus
+    jelka_rows.append("    🟫    ") # Deblo
+    jelka_rows.append("  🎁🎁🎁  ") # Pokloni ispod
+    
+    return "\n".join(jelka_rows)
 
-# --- KOMANDE ---
+# --- INTERAKTIVNI GUMBI (ANTI-SPAM UI) ---
+
+class ShopDropdown(discord.ui.Select):
+    def __init__(self, vilenjak):
+        self.vilenjak = vilenjak
+        options = []
+        for kat, artikli in vilenjacki_shop.items():
+            for art_id, inf in artikli.items():
+                options.append(discord.SelectOption(
+                    label=f"{art_id.replace('_', ' ').title()}",
+                    value=f"{kat}:{art_id}",
+                    description=f"Cijena: {inf['cijena']} ❄️ | Bonus: +{inf['bonus']}",
+                    emoji=inf['boja']
+                ))
+        super().__init__(placeholder="Odaberi ukras za kupovinu...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.vilenjak.user_id:
+            await interaction.response.send_message("❌ Ovo nije tvoj meni!", ephemeral=True)
+            return
+
+        kat, art_id = self.values[0].split(":")
+        artikal = vilenjacki_shop[kat][art_id]
+
+        if self.vilenjak.snowflakes < artikal['cijena']:
+            await interaction.response.send_message(f"❌ Nemaš dovoljno snowflakesa! Treba ti {artikal['cijena']} ❄️.", ephemeral=True)
+            return
+
+        self.vilenjak.snowflakes -= artikal['cijena']
+        
+        # Razvrstavanje u ispravan inventory ključ
+        inv_kljuc = "vrh_jelke" if kat == "vrhovi" else kat
+        self.vilenjak.inventory[inv_kljuc].append(art_id)
+
+        # Level up jelke
+        self.vilenjak.jelka_xp += 15
+        lvl_up_poruka = ""
+        if self.vilenjak.jelka_xp >= 100:
+            self.vilenjak.jelka_level += 1
+            self.vilenjak.jelka_xp = 0
+            lvl_up_poruka = f" \n🎄 **Tvoja jelka je narasla na Level {self.vilenjak.jelka_level}!**"
+
+        save_vilenjaci()
+        await interaction.response.send_message(f"🎉 Kupio/la si {artikal['boja']} {art_id.replace('_', ' ').title()}! Preostalo: {self.vilenjak.snowflakes} ❄️.{lvl_up_poruka}", ephemeral=True)
+
+class ShopView(discord.ui.View):
+    def __init__(self, vilenjak):
+        super().__init__(timeout=60)
+        self.add_item(ShopDropdown(vilenjak))
+
+class ZadaciView(discord.ui.View):
+    def __init__(self, vilenjak):
+        super().__init__(timeout=60)
+        self.vilenjak = vilenjak
+        
+        for z_id, z_info in dnevni_zadaci.items():
+            self.add_item(discord.ui.Button(label=z_id.replace('_', ' ').title(), style=discord.ui.ButtonStyle.success, custom_id=z_id))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if str(interaction.user.id) != self.vilenjak.user_id:
+            await interaction.response.send_message("❌ Ovo nisu tvoji zadaci!", ephemeral=True)
+            return False
+        return True
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+
+    async def dispatch(self, interaction: discord.Interaction):
+        z_id = interaction.data['custom_id']
+        preostalo = get_cooldown(self.vilenjak.user_id, z_id)
+        
+        if preostalo > 0:
+            sati = int(preostalo // 3600)
+            minuti = int((preostalo % 3600) // 60)
+            await interaction.response.send_message(f"⏰ Taj zadatak je na cooldownu još {sati}h {minuti}m!", ephemeral=True)
+            return
+
+        z_info = dnevni_zadaci[z_id]
+        self.vilenjak.snowflakes += z_info['snowflakes']
+        self.vilenjak.iskustvo += z_info['iskustvo']
+
+        # Postavi cooldown za 8 sati
+        if self.vilenjak.user_id not in cooldown_zadaci:
+            cooldown_zadaci[self.vilenjak.user_id] = {}
+        cooldown_zadaci[self.vilenjak.user_id][z_id] = datetime.now()
+
+        # Level up vilenjaka
+        lvl_tekst = ""
+        if self.vilenjak.iskustvo >= 100:
+            self.vilenjak.nivo += 1
+            self.vilenjak.iskustvo = 0
+            lvl_tekst = f"\n🎉 **LEVEL UP! Sada si Level {self.vilenjak.nivo} vilenjak!**"
+
+        save_vilenjaci()
+        await interaction.response.send_message(f"✅ **Uspješno obavljeno:** {z_info['opis']}\n Zaradio/la: {z_info['snowflakes']} ❄️ i +{z_info['iskustvo']} XP.{lvl_tekst}", ephemeral=True)
+
+# --- TEKSTUALNE KOMANDE ---
+
 @bot.command()
 async def postani_vilenjak(ctx):
-    """Počni svoju vilenjačku avanturu!"""
     user_id = str(ctx.author.id)
-
     if user_id in vilenjaci:
-        await ctx.send("🎅 Već si vilenjak! Koristi `!mojstatus` za pregled.")
+        await ctx.send("🎅 Već imaš aktivan vilenjački profil! Unesi `!mojstatus`.")
         return
-
-    novi_vilenjak = Vilenjak(user_id)
-    vilenjaci[user_id] = novi_vilenjak
+    vilenjaci[user_id] = Vilenjak(user_id)
     save_vilenjaci()
-
-    embed = discord.Embed(
-        title=f"🎄 Dobrodošao/la, {novi_vilenjak.ime}!",
-        description="Dobrodošao/la u Selo Djeda Mraz! 🎅",
-        color=discord.Color.green()
-    )
-    embed.add_field(name="🎁 Početni snowflakes", value="100 ❄️", inline=True)
-    embed.add_field(name="🏠 Tvoja kućica", value="Osnovna vilenjačka kućica", inline=True)
-    embed.add_field(name="🛠️ Radionica", value="Prazna - kupi ukrase u shopu!", inline=True)
-    embed.add_field(name="🌲 Tvoja jelka", value="Level 0 - kupi ukrase da je ukrasiš!", inline=True)
-    embed.add_field(name="📋 Prvi zadatak", value="Koristi `!zadaci` za prvi posao!", inline=False)
-
-    await ctx.send(embed=embed)
+    await ctx.send(f"🎄 **Dobrodošao/la u radionicu, {vilenjaci[user_id].ime}!** Dobio/la si 100 ❄️. Upiši `!jelka` da vidiš svoj bor.")
 
 @bot.command()
 async def mojstatus(ctx):
-    """Prikaži svoj vilenjački status"""
     user_id = str(ctx.author.id)
-    vilenjak = vilenjaci.get(user_id)
-
-    if not vilenjak:
-        await ctx.send("🎅 Nisi vilenjak! Koristi `!postani_vilenjak` da počneš.")
+    v = vilenjaci.get(user_id)
+    if not v:
+        await ctx.send("❌ Nisi registriran! Napiši `!postani_vilenjak`.")
         return
-
-    sjaj, ljepota, bonus = calculate_jelka_stats(vilenjak)
-
-    embed = discord.Embed(
-        title=f"🎄 Status: {vilenjak.ime}",
-        color=discord.Color.blue()
-    )
-    embed.add_field(name="📊 Nivo", value=f"Level {vilenjak.nivo}", inline=True)
-    embed.add_field(name="⭐ XP", value=f"{vilenjak.iskustvo}/100", inline=True)
-    embed.add_field(name="❄️ Snowflakes", value=f"{vilenjak.snowflakes} ❄️", inline=True)
-    embed.add_field(name="🏠 Kućica", value=vilenjak.kucica, inline=True)
-    embed.add_field(name="🛠️ Radionica", value=vilenjak.radionica, inline=True)
-    embed.add_field(name="🌲 Jelka Level", value=f"Level {vilenjak.jelka_level}", inline=True)
-
-    # Vještine
-    vjestine_text = "\n".join([f"{k}: Lvl {v}" for k, v in vilenjak.vjestine.items()])
-    embed.add_field(name="🎯 Vještine", value=vjestine_text, inline=False)
-
-    # Stats jelke
-    embed.add_field(name="✨ Stats Jelke", 
-                   value=f"Sjaj: +{sjaj} | Ljepota: +{ljepota} | Bonus: +{bonus}", 
-                   inline=False)
-
+    sjaj, ljepota, bonus = calculate_stats(v)
+    
+    embed = discord.Embed(title=f"📊 Status Vilenjaka: {v.ime}", color=discord.Color.green())
+    embed.add_field(name="👤 Razina Vilenjaka", value=f"Lvl {v.nivo} ({v.iskustvo}/100 XP)", inline=True)
+    embed.add_field(name="❄️ Valuta", value=f"{v.snowflakes} Snowflakes", inline=True)
+    embed.add_field(name="🎄 Razina Jelke", value=f"Lvl {v.jelka_level}", inline=True)
+    embed.add_field(name="✨ Efekti Jelke", value=f"Sjaj: +{sjaj} | Ljepota: +{ljepota} | Bonus: +{bonus}", inline=False)
     await ctx.send(embed=embed)
 
 @bot.command()
-async def shop(ctx, kategorija: str = None):
-    """Prikaži vilenjački shop s ukrasima"""
-    if not kategorija:
-        embed = discord.Embed(
-            title="🏪 VILENJAČKI SHOP - Kategorije Ukrasa",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="💡 Lampice", value="`!shop lampice` - Razne boje lampica", inline=True)
-        embed.add_field(name="🎄 Kugle", value="`!shop kugle` - Božićne kugle", inline=True)
-        embed.add_field(name="⭐ Vrhovi", value="`!shop vrhovi` - Vrhovi za jelku", inline=True)
-        embed.add_field(name="🎁 Ostali Ukrasi", value="`!shop ostali_ukrasi` - Razni ukrasi", inline=True)
-        await ctx.send(embed=embed)
-        return
-
-    if kategorija not in vilenjacki_shop:
-        await ctx.send("❌ Dostupne kategorije: `lampice`, `kugle`, `vrhovi`, `ostali_ukrasi`")
-        return
-
-    embed = discord.Embed(
-        title=f"🏪 SHOP - {kategorija.replace('_', ' ').title()}",
-        color=discord.Color.gold()
-    )
-
-    for item, details in vilenjacki_shop[kategorija].items():
-        embed.add_field(
-            name=f"{details['boja']} {item.replace('_', ' ').title()}",
-            value=f"Cijena: {details['cijena']} ❄️\nBonus: {details['bonus']}",
-            inline=True
-        )
-
-    embed.set_footer(text="Koristi `!kupi [item]` za kupovinu!")
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def kupi(ctx, *, item_ime: str):
-    """Kupi ukras za svoju jelku"""
+async def shop(ctx):
     user_id = str(ctx.author.id)
-    vilenjak = vilenjaci.get(user_id)
-
-    if not vilenjak:
-        await ctx.send("🎅 Nisi vilenjak!")
-        return
-
-    item_pronaden = None
-    kategorija_pronadena = None
-
-    for kategorija, items in vilenjacki_shop.items():
-        for item, details in items.items():
-            if item.lower() == item_ime.lower().replace(" ", "_"):
-                item_pronaden = details
-                kategorija_pronadena = kategorija
-                break
-
-    if not item_pronaden:
-        await ctx.send("❌ Ukras nije pronađen u shopu!")
-        return
-
-    if vilenjak.snowflakes < item_pronaden['cijena']:
-        await ctx.send(f"❌ Nemaš dovoljno snowflakes! Trebaš {item_pronaden['cijena']} ❄️, a imaš {vilenjak.snowflakes} ❄️")
-        return
-
-    vilenjak.snowflakes -= item_pronaden['cijena']
-
-    # Dodaj u odgovarajuću kategoriju inventorya
-    if kategorija_pronadena == "lampice":
-        vilenjak.inventory["lampice"].append(item_ime)
-    elif kategorija_pronadena == "kugle":
-        vilenjak.inventory["kugle"].append(item_ime)
-    elif kategorija_pronadena == "vrhovi":
-        vilenjak.inventory["vrh_jelke"].append(item_ime)
-    elif kategorija_pronadena == "ostali_ukrasi":
-        vilenjak.inventory["ostali_ukrasi"].append(item_ime)
-
-    # Dodaj XP jelki
-    vilenjak.jelka_xp += 10
-    if vilenjak.jelka_xp >= 100:
-        vilenjak.jelka_level += 1
-        vilenjak.jelka_xp = 0
-
-    save_vilenjaci()
-
-    await ctx.send(f"🎉 Kupio/la si **{item_ime.replace('_', ' ').title()}** {item_pronaden['boja']}!\n"
-                  f"💰 Preostalo snowflakes: {vilenjak.snowflakes} ❄️\n"
-                  f"🌲 Jelka XP: +10 (Ukupno: {vilenjak.jelka_xp}/100)")
+    v = vilenjaci.get(user_id)
+    if not v: return
+    
+    embed = discord.Embed(title="🏪 Vilenjački Blagdanski Shop", description="Odaberi ukrase iz izbornika ispod i izravno ukrasi svoju jelku!", color=discord.Color.gold())
+    await ctx.send(embed=embed, view=ShopView(v))
 
 @bot.command()
 async def zadaci(ctx):
-    """Prikaži dostupne zadatke sa cooldownom"""
     user_id = str(ctx.author.id)
-    vilenjak = vilenjaci.get(user_id)
-
-    if not vilenjak:
-        await ctx.send("🎅 Nisi vilenjak!")
-        return
-
-    embed = discord.Embed(
-        title="📋 DOSTUPNI ZADACI (8h cooldown)",
-        color=discord.Color.blue()
-    )
-
-    for zadatak_id, zadatak in dnevni_zadaci.items():
-        dostupan = can_do_zadatak(user_id, zadatak_id)
-        cooldown_text = ""
-
-        if not dostupan:
-            preostalo = get_cooldown_remaining(user_id, zadatak_id)
-            cooldown_text = f"⏰ Cooldown: {format_time(preostalo)}"
-
-        status = "✅ Dostupan" if dostupan else "❌ Na cooldownu"
-
-        embed.add_field(
-            name=f"🎯 {zadatak_id.replace('_', ' ').title()} - {status}",
-            value=f"{zadatak['opis']}\n"
-                  f"Nagrada: {zadatak['snowflakes']} ❄️ + {zadatak['iskustvo']} XP\n"
-                  f"{cooldown_text}\n"
-                  f"Koristi: `!radi {zadatak_id}`",
-            inline=False
-        )
-
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def radi(ctx, zadatak_id: str):
-    """Započni rad na zadatku"""
-    user_id = str(ctx.author.id)
-
-    if user_id in aktivni_zadaci:
-        await ctx.send("❌ Već radiš na zadatku! Pričekaj da završiš trenutni.")
-        return
-
-    vilenjak = vilenjaci.get(user_id)
-    if not vilenjak:
-        await ctx.send("🎅 Nisi vilenjak!")
-        return
-
-    if zadatak_id not in dnevni_zadaci:
-        await ctx.send("❌ Zadataka nije pronađen!")
-        return
-
-    # Provjeri cooldown
-    if not can_do_zadatak(user_id, zadatak_id):
-        preostalo = get_cooldown_remaining(user_id, zadatak_id)
-        await ctx.send(f"❌ Ovaj zadatak je na cooldownu! Pričekaj još {format_time(preostalo)}")
-        return
-
-    zadatak = dnevni_zadaci[zadatak_id]
-    potrebna_vjestina = zadatak['potrebna_vjestina']
-
-    if potrebna_vjestina not in vilenjak.vjestine or vilenjak.vjestine[potrebna_vjestina] < 1:
-        await ctx.send("❌ Nemaš dovoljno vještine za ovaj zadatak!")
-        return
-
-    # Započni zadatak
-    aktivni_zadaci[user_id] = zadatak_id
-
-    await ctx.send(f"🔨 **Započinješ zadatak:** {zadatak_id.replace('_', ' ').title()}\n"
-                  f"📝 {zadatak['opis']}\n"
-                  f"⏰ Zadatak traje 30 sekundi...")
-
-    # Simuliraj rad (30 sekundi umjesto 8 sati za testiranje)
-    await asyncio.sleep(30)
-
-    # Završi zadatak
-    if user_id in aktivni_zadaci and aktivni_zadaci[user_id] == zadatak_id:
-        # Dodaj nagrade
-        vilenjak.snowflakes += zadatak['snowflakes']
-        vilenjak.iskustvo += zadatak['iskustvo']
-
-        # Postavi cooldown
-        if user_id not in cooldown_zadaci:
-            cooldown_zadaci[user_id] = {}
-        cooldown_zadaci[user_id][zadatak_id] = datetime.now()
-
-        # Level up provjera
-        if vilenjak.iskustvo >= 100:
-            vilenjak.nivo += 1
-            vilenjak.iskustvo = 0
-            await ctx.send(f"🎉 **LEVEL UP!** Sada si Level {vilenjak.nivo}!")
-
-        # Povećaj vještinu (šansa)
-        if random.random() < 0.3:
-            vilenjak.vjestine[potrebna_vjestina] += 1
-            await ctx.send(f"🌟 **Vještina poboljšana!** {potrebna_vjestina} sada Level {vilenjak.vjestine[potrebna_vjestina]}")
-
-        # Ukloni iz aktivnih zadataka
-        del aktivni_zadaci[user_id]
-        save_vilenjaci()
-
-        await ctx.send(f"✅ **Završio/la si zadatak!**\n"
-                      f"💰 Zaradio/la: {zadatak['snowflakes']} ❄️\n"
-                      f"⭐ Dobio/la: {zadatak['iskustvo']} XP\n"
-                      f"💰 Ukupno snowflakes: {vilenjak.snowflakes} ❄️\n"
-                      f"⏰ Sljedeći put možeš raditi ovaj zadatak za 8 sati")
-    else:
-        await ctx.send("❌ Zadatak je prekinut!")
-
-@bot.command()
-async def inventory(ctx, member: discord.Member = None):
-    """Prikaži svoje ili tuđe ukrase"""
-    target_member = member or ctx.author
-    user_id = str(target_member.id)
-    vilenjak = vilenjaci.get(user_id)
-
-    if not vilenjak:
-        if member:
-            await ctx.send(f"🎅 {member.display_name} nije vilenjak!")
-        else:
-            await ctx.send("🎅 Nisi vilenjak! Koristi `!postani_vilenjak` da počneš.")
-        return
-
-    sjaj, ljepota, bonus = calculate_jelka_stats(vilenjak)
-
-    embed = discord.Embed(
-        title=f"🎒 INVENTORY - {target_member.display_name}",
-        description=f"🌲 Jelka Level: {vilenjak.jelka_level} | XP: {vilenjak.jelka_xp}/100\n"
-                   f"✨ Stats: Sjaj +{sjaj} | Ljepota +{ljepota} | Bonus +{bonus}",
-        color=discord.Color.purple()
-    )
-
-    for kategorija, items in vilenjak.inventory.items():
-        if items:
-            # Grupiraj iste iteme
-            item_count = {}
-            for item in items:
-                item_count[item] = item_count.get(item, 0) + 1
-
-            items_text = []
-            for item, count in item_count.items():
-                if item in vilenjacki_shop.get(kategorija, {}):
-                    boja = vilenjacki_shop[kategorija][item]["boja"]
-                    items_text.append(f"{boja} {item.replace('_', ' ').title()} x{count}")
-                else:
-                    items_text.append(f"{item.replace('_', ' ').title()} x{count}")
-
-            embed.add_field(
-                name=f"📦 {kategorija.replace('_', ' ').title()}",
-                value="\n".join(items_text) if items_text else "Prazno",
-                inline=True
-            )
-        else:
-            embed.add_field(
-                name=f"📦 {kategorija.replace('_', ' ').title()}",
-                value="Prazno",
-                inline=True
-            )
-
-    await ctx.send(embed=embed)
-
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def reset(ctx, member: discord.Member):
-    """Resetiraj vilenjaka (samo admini)"""
-    user_id = str(member.id)
-
-    if user_id not in vilenjaci:
-        await ctx.send(f"❌ {member.display_name} nije vilenjak!")
-        return
-
-    # Obriši vilenjaka
-    del vilenjaci[user_id]
-
-    # Obriši iz cooldowna
-    if user_id in cooldown_zadaci:
-        del cooldown_zadaci[user_id]
-
-    # Obriši iz aktivnih zadataka
-    if user_id in aktivni_zadaci:
-        del aktivni_zadaci[user_id]
-
-    save_vilenjaci()
-
-    await ctx.send(f"✅ **{member.display_name} je resetiran!**\n"
-                  f"🎅 Sada mora ponovo koristiti `!postani_vilenjak` da počne ispočetka.")
-
-@reset.error
-async def reset_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ Samo administratori mogu koristiti ovu komandu!")
+    v = vilenjaci.get(user_id)
+    if not v: return
+    
+    embed = discord.Embed(title="📋 Vilenjački poslovi (8h Cooldown)", description="Klikni na gumb ispod posla koji želiš odraditi odmah!", color=discord.Color.blue())
+    await ctx.send(embed=embed, view=ZadaciView(v))
 
 @bot.command()
 async def jelka(ctx, member: discord.Member = None):
-    """Prikaži jelku s ukrasima"""
-    target_member = member or ctx.author
-    user_id = str(target_member.id)
-    vilenjak = vilenjaci.get(user_id)
-
-    if not vilenjak:
-        if member:
-            await ctx.send(f"🎅 {member.display_name} nema jelku!")
-        else:
-            await ctx.send("🎅 Nemaš jelku! Postani vilenjak sa `!postani_vilenjak`")
+    target = member or ctx.author
+    user_id = str(target.id)
+    v = vilenjaci.get(user_id)
+    
+    if not v:
+        await ctx.send("🎅 Taj korisnik još nema svoju jelku.")
         return
 
-    sjaj, ljepota, bonus = calculate_jelka_stats(vilenjak)
-
-    # Kreiraj vizualnu jelku
-    jelka_visual = []
-    jelka_visual.append(" " * 4 + "🌲" * 3)
-    jelka_visual.append(" " * 3 + "🌲" * 5) 
-    jelka_visual.append(" " * 2 + "🌲" * 7)
-    jelka_visual.append(" " * 1 + "🌲" * 9)
-    jelka_visual.append("🌲" * 11)
-    jelka_visual.append(" " * 4 + "🎁" * 3)
-
-    # Dodaj ukrase na jelku
-    ukrasi_text = []
-    for kategorija, items in vilenjak.inventory.items():
-        for item in items[:3]:  # Prikaži samo prva 3 iz svake kategorije
-            if item in vilenjacki_shop.get(kategorija, {}):
-                boja = vilenjacki_shop[kategorija][item]["boja"]
-                ukrasi_text.append(boja)
+    sjaj, ljepota, bonus = calculate_stats(v)
+    stablo_prikaz = generiraj_jelku_string(v)
 
     embed = discord.Embed(
-        title=f"🎄 Jelka - {target_member.display_name}",
-        description=f"```\n" + "\n".join(jelka_visual) + "\n```",
-        color=discord.Color.green()
+        title=f"🎄 Blagdanska Jelka: {target.display_name}",
+        description=f"```\n{stablo_prikaz}\n```",
+        color=discord.Color.brand_green()
     )
-
-    embed.add_field(name="📊 Level Jelke", value=f"Level {vilenjak.jelka_level}", inline=True)
-    embed.add_field(name="⭐ XP Jelke", value=f"{vilenjak.jelka_xp}/100", inline=True)
-    embed.add_field(name="✨ Ukrasi", value=" ".join(ukrasi_text[:10]), inline=True)
-    embed.add_field(name="📈 Stats", 
-                   value=f"**Sjaj:** +{sjaj}\n**Ljepota:** +{ljepota}\n**Bonus:** +{bonus}", 
-                   inline=False)
-
+    embed.add_field(name="📈 Statovi", value=f"Level: **{v.jelka_level}** ({v.jelka_xp}/100 XP)\nSjaj: **+{sjaj}** | Ljepota: **+{ljepota}**", inline=True)
+    embed.add_field(name="📦 Ukrasi", value=f"Kugle: {len(v.inventory['kugle'])} | Lampice: {len(v.inventory['lampice'])}", inline=True)
+    
     await ctx.send(embed=embed)
 
 @bot.command()
 async def leaderboard(ctx):
-    """Prikaži najbolje vilenjake"""
     if not vilenjaci:
-        await ctx.send("🎅 Još nema vilenjaka! Budi prvi koji će koristiti `!postani_vilenjak`")
+        await ctx.send("🎅 Još nema aktivnih vilenjaka na serveru.")
         return
-
-    sortirani_vilenjaci = sorted(
-        vilenjaci.values(), 
-        key=lambda x: (x.jelka_level, x.nivo, x.snowflakes), 
-        reverse=True
-    )[:10]
-
-    embed = discord.Embed(
-        title="🏆 VILENJAČKI LEADERBOARD - TOP 10",
-        description="Rangirani po levelu jelke",
-        color=discord.Color.gold()
-    )
-
-    for i, vilenjak in enumerate(sortirani_vilenjaci, 1):
-        member = ctx.guild.get_member(int(vilenjak.user_id))
-        ime = member.display_name if member else vilenjak.ime
-
-        embed.add_field(
-            name=f"{i}. {ime}",
-            value=f"🌲 Level {vilenjak.jelka_level} | 👤 Level {vilenjak.nivo} | ❄️ {vilenjak.snowflakes}",
-            inline=False
-        )
-
+    
+    top = sorted(vilenjaci.values(), key=lambda x: (x.jelka_level, x.nivo, x.snowflakes), reverse=True)[:5]
+    embed = discord.Embed(title="🏆 TOP 5 Vilenjačkih Jelki", color=discord.Color.red())
+    
+    for i, v in enumerate(top, 1):
+        korisnik = bot.get_user(int(v.user_id))
+        ime = korisnik.display_name if korisnik else v.ime
+        embed.add_field(name=f"{i}. {ime}", value=f"🎄 Jelka Lvl: **{v.jelka_level}** | Lvl: {v.nivo} | ❄️ {v.snowflakes}", inline=False)
+        
     await ctx.send(embed=embed)
 
-@bot.command()
-async def pomoc(ctx):
-    """Prikaži sve dostupne komande"""
-    embed = discord.Embed(
-        title="🎅 VILENJAČKE KOMANDE - POMOĆ",
-        color=discord.Color.blue()
-    )
-
-    komande = [
-        ("`!postani_vilenjak`", "Započni vilenjačku avanturu"),
-        ("`!mojstatus`", "Vidi svoj status i vještine"),
-        ("`!shop [kategorija]`", "Otvori shop s ukrasima"),
-        ("`!kupi [ukras]`", "Kupi ukras za jelku"),
-        ("`!zadaci`", "Vidi zadatke (8h cooldown)"),
-        ("`!radi [zadatak]`", "Započni rad na zadatku"),
-        ("`!inventory [@user]`", "Vidi svoje/tuđe ukrase"),
-        ("`!jelka [@user]`", "Prikaži jelku s ukrasima"),
-        ("`!leaderboard`", "Vidi najbolje vilenjake"),
-        ("`!reset @user`", "**ADMIN** - Resetiraj vilenjaka"),
-        ("`!pomoc`", "Ova poruka pomoći")
-    ]
-
-    for komanda, opis in komande:
-        embed.add_field(name=komanda, value=opis, inline=False)
-
-    await ctx.send(embed=embed)
-
-# --- BOT EVENTI ---
 @bot.event
 async def on_ready():
-    print(f"🎅 {bot.user} je online i spreman za vilenjačku avanturu!")
     load_vilenjaci()
+    print(f"🎄 {bot.user} je spreman za rad na Railwayu!")
 
-# --- POKRETANJE BOTA ---
 if __name__ == "__main__":
-    load_vilenjaci()
-    
-    # Pokušaj dobiti token na različite načine
-    token = (
-        os.environ.get('DISCORD_TOKEN') or
-        os.environ.get('TOKEN') or
-        os.environ.get('BOT_TOKEN') or
-        os.environ.get('DISCORDBOT_TOKEN')
-    )
-    
-    if not token:
-        print("❌ Token nije pronađen u environment varijablama!")
-        print("🔍 Dostupne varijable:", list(os.environ.keys()))
-        # Pokušaj s default tokenom za test
-        print("🔄 Pokušavam s fallback tokenom...")
-        token = "YOUR_TOKEN_HERE"  # Stavi ovdje svoj token direktno TEMPORARNO
-    else:
-        print("✅ Token pronađen u environment varijablama!")
-    
-    try:
-        print("🚀 Pokrećem bota...")
-        bot.run(token)
-    except Exception as e:
-        print(f"❌ Greška pri pokretanju: {e}")
+    token = os.environ.get('DISCORD_TOKEN') or "YOUR_TOKEN_HERE"
+    bot.run(token)
